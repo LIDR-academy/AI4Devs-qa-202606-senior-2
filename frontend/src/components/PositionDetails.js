@@ -14,28 +14,27 @@ const PositionsDetails = () => {
     const navigate = useNavigate();
 
     useEffect(() => {
-        const fetchInterviewFlow = async () => {
+        // Sequenced on purpose: building each stage's `candidates` array requires
+        // the interview steps (for the name -> stage match below), so fetching
+        // candidates in parallel and merging via two independent setStages calls
+        // is a race - whichever response lands second wins and can wipe out the
+        // other's data depending on network timing.
+        const loadPosition = async () => {
             try {
-                const response = await fetch(`http://localhost:3010/positions/${id}/interviewFlow`);
-                const data = await response.json();
-                const interviewSteps = data.interviewFlow.interviewFlow.interviewSteps.map(step => ({
+                const flowResponse = await fetch(`http://localhost:3010/positions/${id}/interviewFlow`);
+                const flowData = await flowResponse.json();
+                const interviewSteps = flowData.interviewFlow.interviewFlow.interviewSteps.map(step => ({
                     title: step.name,
                     id: step.id,
                     candidates: []
                 }));
-                setStages(interviewSteps);
-                setPositionName(data.interviewFlow.positionName);
-            } catch (error) {
-                console.error('Error fetching interview flow:', error);
-            }
-        };
+                setPositionName(flowData.interviewFlow.positionName);
 
-        const fetchCandidates = async () => {
-            try {
-                const response = await fetch(`http://localhost:3010/positions/${id}/candidates`);
-                const candidates = await response.json();
-                setStages(prevStages =>
-                    prevStages.map(stage => ({
+                const candidatesResponse = await fetch(`http://localhost:3010/positions/${id}/candidates`);
+                const candidates = await candidatesResponse.json();
+
+                setStages(
+                    interviewSteps.map(stage => ({
                         ...stage,
                         candidates: candidates
                             .filter(candidate => candidate.currentInterviewStep === stage.title)
@@ -48,12 +47,11 @@ const PositionsDetails = () => {
                     }))
                 );
             } catch (error) {
-                console.error('Error fetching candidates:', error);
+                console.error('Error loading position:', error);
             }
         };
 
-        fetchInterviewFlow();
-        fetchCandidates();
+        loadPosition();
     }, [id]);
 
     const updateCandidateStep = async (candidateId, applicationId, newStep) => {
@@ -110,7 +108,7 @@ const PositionsDetails = () => {
             <Button variant="link" onClick={() => navigate('/positions')} className="mb-3">
                 Volver a Posiciones
             </Button>
-            <h2 className="text-center mb-4">{positionName}</h2>
+            <h2 className="text-center mb-4" data-testid="position-title">{positionName}</h2>
             <DragDropContext onDragEnd={onDragEnd}>
                 <Row>
                     {stages.map((stage, index) => (
